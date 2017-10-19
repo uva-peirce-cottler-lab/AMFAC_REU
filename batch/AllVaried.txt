@@ -1,0 +1,24 @@
+<?xml version="1.0" ?><sweep runs="1">
+<parameter name="gridHeight" type="constant" constant_type="int" value="100"></parameter>
+<parameter name="gridWidth" type="constant" constant_type="int" value="100"></parameter>
+<parameter name="endTick" type="constant" constant_type="int" value="350"></parameter>
+<parameter name="randomSeed" type="constant" constant_type="int" value="1"></parameter>
+<parameter name="gridWidth" type="constant" constant_type="int" value="100"></parameter>
+<parameter name="apopProb" type="number" number_type="double" start="0.0041667" end="0.2041667" step="0.1">
+<parameter name="speedMax" type="number" number_type="double" start="0.0835" end="0.334" step="0.0835">
+<parameter name="speedRange" type="number" number_type="double" start="0.0503" end="0.1503" step="0.1">
+<parameter name="chemRange" type="number" number_type="double" start="0.1" end="0.9" step="0.2">
+<parameter name="degRange" type="number" number_type="double" start="0.03145" end="0.12145" step="0.03">
+<parameter name="infSize" type="number" number_type="int" start="10" end="40" step="10">
+<parameter name="diffCoeff" type="number" number_type="double" start="0" end="1.0" step="0.25">
+<parameter name="mitMax" type="number" number_type="double" start="0.0185" end="0.074" step="0.0185">
+<parameter name="depMax" type="number" number_type="double" start="0.07325" end="0.293" step="0.07325">
+<parameter name="mitRange" type="number" number_type="double" start="0.0085" end="0.0285" step="0.01">
+<parameter name="depRange" type="number" number_type="double" start="0.0325" end="0.13245" step="0.1">
+<parameter name="initialFibroblastCount" type="number" number_type="int" start="500" end="12500" step="4000">
+<parameter name="chemMax" type="number" number_type="double" start="0.2" end="1.0" step="0.2">
+<parameter name="diffEvap" type="number" number_type="double" start="0" end="0.75" step="0.25">
+<parameter name="degMax" type="number" number_type="double" start="0.242" end="0.968" step="0.242">
+</parameter></parameter></parameter></parameter></parameter></parameter></parameter></parameter></parameter>
+</parameter></parameter></parameter></parameter></parameter></parameter>
+</sweep>

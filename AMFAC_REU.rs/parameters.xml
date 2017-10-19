@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<parameters>
+					<parameter name="randomSeed" displayName="A. Default Random Seed" type="int" 
+						defaultValue="__NULL__"
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$IntConverter"
+									
+		/>
+				<parameter name="initialFibroblastCount" displayName="B. Initial Fibroblast Count" type="int" 
+						defaultValue="100" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$IntConverter"
+									
+		/>
+				<parameter name="gridWidth" displayName="C. Grid Width" type="int" 
+						defaultValue="20" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$IntConverter"
+									
+		/>
+				<parameter name="gridHeight" displayName="D. Grid Height" type="int" 
+						defaultValue="20" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$IntConverter"
+									
+		/>
+				<parameter name="endTick" displayName="E. Total Simulation Ticks" type="int" 
+						defaultValue="170" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$IntConverter"
+									
+		/>
+				<parameter name="diffEvap" displayName="F. Diffusion Evaporation" type="double" 
+						defaultValue="0.5" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$DoubleConverter"
+									
+		/>
+				<parameter name="diffCoeff" displayName="G. Diffusion Coefficient" type="double" 
+						defaultValue="1.0" 
+						isReadOnly="false"
+						converter="repast.simphony.parameter.StringConverterFactory$DoubleConverter"
+									
+		/>
+				<parameter name="speedRange" displayName="H. Range of Movement Speeds" type="double" 
+						defaultValue="0.9" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$DoubleConverter"
+									
+		/>
+				<parameter name="speedMax" displayName="I. Maximum Movement Speed" type="double" 
+						defaultValue="1" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$DoubleConverter"
+									
+		/>
+				<parameter name="apopProb" displayName="J. Probability of Apoptosis" type="double" 
+						defaultValue="0.0041667" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$DoubleConverter"
+									
+		/>
+				<parameter name="mitRange" displayName="K. Range of Mitosis Rates" type="double" 
+						defaultValue="0.0375" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$DoubleConverter"
+									
+		/>
+				<parameter name="mitMax" displayName="L. Maximum Mitosis Rate" type="double" 
+						defaultValue="0.041667" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$DoubleConverter"
+									
+		/>
+				<parameter name="depRange" displayName="M. Range of Deposition Rates" type="double" 
+						defaultValue="1" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$DoubleConverter"
+									
+		/>
+				<parameter name="depMax" displayName="N. Maximum Deposition Rate" type="double" 
+						defaultValue="1" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$DoubleConverter"
+									
+		/>
+				<parameter name="degRange" displayName="O. Range of Degradation Rates" type="double" 
+						defaultValue="1" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$DoubleConverter"
+									
+		/>
+				<parameter name="degMax" displayName="P. Maximum Degradation Rate" type="double" 
+						defaultValue="1" 
+						isReadOnly="false" 
+						converter="repast.simphony.parameter.StringConverterFactory$DoubleConverter"
+									
+		/>
+				
+		</parameters>
+
+

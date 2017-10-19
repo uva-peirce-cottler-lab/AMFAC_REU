@@ -1,0 +1,22 @@
+<?xml version="1.0" ?><sweep runs="1">
+<parameter name="randomSeed" type="constant" constant_type="int" value="1"></parameter>
+<parameter name="gridHeight" type="constant" constant_type="int" value="100"></parameter>
+<parameter name="gridWidth" type="constant" constant_type="int" value="100"></parameter>
+<parameter name="endTick" type="constant" constant_type="int" value="350"></parameter>
+<parameter name="initialFibroblastCount" type="constant" constant_type="int" value="4500"></parameter>
+<parameter name="chemRange" type="constant" constant_type="double" value="0.9"></parameter>
+<parameter name="chemMax" type="constant" constant_type="double" value="0.484"></parameter>
+<parameter name="diffEvap" type="constant" constant_type="double" value="0.484"></parameter>
+<parameter name="diffCoeff" type="constant" constant_type="double" value="1.0"></parameter>
+<parameter name="infSize" type="constant" constant_type="int" value="20"></parameter>
+<parameter name="speedRange" type="constant" constant_type="double" value="0.1503"></parameter>
+<parameter name="speedMax" type="constant" constant_type="double" value="0.167"></parameter>
+<parameter name="apopProb" type="constant" constant_type="double" value="0.0041667"></parameter>
+<parameter name="mitRange" type="constant" constant_type="double" value="0.0185"></parameter>
+<parameter name="mitMax" type="constant" constant_type="double" value="0.037"></parameter>
+<parameter name="depRange" type="constant" constant_type="double" value="0.13245"></parameter>
+<parameter name="depMax" type="constant" constant_type="double" value="0.1465"></parameter>
+<parameter name="degRange" type="constant" constant_type="double" value="0.09145"></parameter>
+<parameter name="degMax" type="constant" constant_type="double" value="0.484"></parameter>
+</parameter></parameter>
+</sweep>
