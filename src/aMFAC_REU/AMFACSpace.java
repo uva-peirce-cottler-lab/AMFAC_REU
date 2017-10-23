@@ -485,12 +485,12 @@ public class AMFACSpace extends DefaultContext<Object> {
 		}
 		
 		//write the data
-		String fileNameCompleteNet = "C:\\Users\\cards\\workspace\\AMFAC_REU\\completenetwork.csv";
-		String fileNameMig = "C:\\Users\\cards\\workspace\\AMFAC_REU\\mig.csv";
-		String fileNameProlif = "C:\\Users\\cards\\workspace\\AMFAC_REU\\prolif.csv";
-		String fileNameDep = "C:\\Users\\cards\\workspace\\AMFAC_REU\\dep.csv";
-		String fileNameDeg = "C:\\Users\\cards\\workspace\\AMFAC_REU\\deg.csv";
-		String fileNameCount = "C:\\Users\\cards\\workspace\\AMFAC_REU\\cellcount.csv";
+		String fileNameCompleteNet = "C:\\Users\\Michaela\\Documents\\completenetwork.csv";
+		String fileNameMig = "C:\\Users\\Michaela\\Documents\\mig.csv";
+		String fileNameProlif = "C:\\Users\\Michaela\\Documents\\prolif.csv";
+		String fileNameDep = "C:\\Users\\Michaela\\Documents\\dep.csv";
+		String fileNameDeg = "C:\\Users\\Michaela\\Documents\\deg.csv";
+		String fileNameCount = "C:\\Users\\Michaela\\Documents\\cellcount.csv";
 		
 		String delim = ",";
 		String newline = "\n";
