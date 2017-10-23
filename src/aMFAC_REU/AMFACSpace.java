@@ -302,7 +302,7 @@ public class AMFACSpace extends DefaultContext<Object> {
 	@ScheduledMethod(start = 1, interval=24, priority = 1)
 	public void writeCollagenData() {
 		//collagen
-		String fileName = "C:\\Users\\cards\\workspace\\AMFAC_REU\\col.csv";
+		String fileName = "C:\\Users\\Michaela\\Documents\\col.csv";
 		String delim = ",";
 		String newline = "\n";
 		FileWriter fileWriter;
@@ -335,7 +335,7 @@ public class AMFACSpace extends DefaultContext<Object> {
 		
 		
 		//tgfb
-		fileName = "C:\\Users\\cards\\workspace\\AMFAC_REU\\tgfb.csv";
+		fileName = "C:\\Users\\Michaela\\Documents\\tgfb.csv";
 		try {
 			fileWriter = new FileWriter(fileName, true);
 			for (int x = 0; x < gridWidth; x++) {
@@ -361,7 +361,7 @@ public class AMFACSpace extends DefaultContext<Object> {
 		
 		
 		//il6
-		fileName = "C:\\Users\\cards\\workspace\\AMFAC_REU\\il6.csv";
+		fileName = "C:\\Users\\Michaela\\Documents\\il6.csv";
 		try {
 			fileWriter = new FileWriter(fileName, true);
 			for (int x = 0; x < gridWidth; x++) {

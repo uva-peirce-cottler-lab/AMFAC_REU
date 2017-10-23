@@ -24,6 +24,8 @@ import repast.simphony.valueLayer.GridValueLayer;
 public class Fibroblast {
 	private AMFACSpace space;
 	Grid grid;
+	//test
+	//add test
 	
 
 	//cellular actions include movement, mitosis, apoptosis, and deposition/degradation of collagen

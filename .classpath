@@ -5,7 +5,7 @@
 	<classpathentry exported="true" kind="con" path="GROOVY_SUPPORT"/>
 	<classpathentry exported="true" kind="con" path="GROOVY_DSL_SUPPORT"/>
 	<classpathentry kind="con" path="REPAST_SIMPHONY_SUPPORT"/>
-	<classpathentry kind="lib" path="lib/engine.jar"/>
-	<classpathentry kind="lib" path="C:/Program Files/MATLAB/R2017a/bin/win64"/>
+	<classpathentry kind="lib" path="C:/Program Files/MATLAB/R2017b/extern/engines/java/jar/engine.jar"/>
+	<classpathentry exported="true" kind="lib" path="C:/Program Files/MATLAB/R2017b/bin/win64"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
