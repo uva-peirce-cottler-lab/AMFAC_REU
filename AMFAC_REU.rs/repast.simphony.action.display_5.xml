@@ -1,5 +1,5 @@
 <repast.simphony.visualization.engine.CartesianDisplayDescriptor>
-  <name>6)IL6</name>
+  <name>7)TNF</name>
   <type>2D</type>
   <styles>
     <entry>
@@ -23,12 +23,17 @@
     <pType>LAST</pType>
     <duration>-1.0</duration>
     <frequency>REPEAT</frequency>
-    <hashCode>1246279666</hashCode>
+    <hashCode>596001664</hashCode>
   </schedParams>
   <layoutClassName>foo.bar.baz</layoutClassName>
   <layoutProjection>grid</layoutProjection>
   <layoutInterval>0</layoutInterval>
-  <layerOrder/>
+  <layerOrder>
+    <entry>
+      <string>aMFAC_REU.ChemokineStyle</string>
+      <int>0</int>
+    </entry>
+  </layerOrder>
   <projections>
     <repast.simphony.scenario.data.ProjectionData>
       <id>grid</id>
@@ -75,6 +80,6 @@
   </backgroundColor>
   <valueLayerStyleName>aMFAC_REU.ChemokineStyle</valueLayerStyleName>
   <valueLayers>
-    <string>Interleukin6</string>
+    <string>TNFalpha</string>
   </valueLayers>
 </repast.simphony.visualization.engine.CartesianDisplayDescriptor>

@@ -27,8 +27,9 @@ public class CollagenStyle implements ValueLayerStyleOGL {
 
 	@Override
 	public Color getColor(double... coordinates) {
-		int roundVal = (int) (collagen.get(coordinates)*2*100.0);
+		int roundVal = (int) (collagen.get(coordinates)*100);
 		Color color = colorMap.get(roundVal);
+		//Color color = new Color(roundVal/100*255+100, 0, 0);
 		
 		if ( roundVal >= 100) {
 			color = Color.red;

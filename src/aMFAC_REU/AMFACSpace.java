@@ -12,7 +12,12 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import org.apache.commons.lang3.ArrayUtils;
 
 import com.mathworks.engine.MatlabEngine;
 
@@ -21,6 +26,7 @@ import repast.simphony.scenario.data.Classpath;
 import repast.simphony.context.DefaultContext;
 import repast.simphony.context.space.grid.GridFactoryFinder;
 import repast.simphony.engine.environment.RunEnvironment;
+import repast.simphony.engine.schedule.ISchedule;
 import repast.simphony.engine.schedule.ScheduledMethod;
 import repast.simphony.parameter.Parameters;
 import repast.simphony.random.RandomHelper;
@@ -28,7 +34,9 @@ import repast.simphony.space.grid.Grid;
 import repast.simphony.space.grid.GridBuilderParameters;
 import repast.simphony.space.grid.GridPoint;
 import repast.simphony.space.grid.RandomGridAdder;
+import repast.simphony.space.grid.StrictBorders;
 import repast.simphony.space.grid.WrapAroundBorders;
+import repast.simphony.space.grid.BouncyBorders;
 import repast.simphony.util.ClassPathEntry;
 import repast.simphony.valueLayer.GridValueLayer;
 import repast.simphony.valueLayer.ValueLayerDiffuser;
@@ -47,37 +55,43 @@ public class AMFACSpace extends DefaultContext<Object> {
 
 	//to keep track of all the layers.
 	//Entries are in the same order as the input entries in the Saucerman model file
-	private ArrayList<GridValueLayer> inputLayers = new ArrayList<GridValueLayer>();
+	public ArrayList<GridValueLayer> inputLayers = new ArrayList<GridValueLayer>();
 	private ArrayList<ValueLayerDiffuser> inputDiffuseLayers = new ArrayList<ValueLayerDiffuser>();
 	
-	private ArrayList<GridValueLayer> otherExtracellularLayers = new ArrayList<GridValueLayer>();;
-	private ArrayList<ValueLayerDiffuser> otherExtracellularDiffuseLayers = new ArrayList<ValueLayerDiffuser>();
-	
 	private GridValueLayer collagen;
-	
-	//These layers will be added to inputLayers
-	private String[] inputLayerNames = {"TGFB","Interleukin6", "Interleukin1",
-				"TNFalpha"};
-	private int[] inputDiffuseIdxs = {}; //numerical indices of inputLayerNames that should diffuse. MUST BE IN INCREASING ORDER
 	
 	//ints alternate from network indices to indices in the inputLayerNames arraylist
 	//for example, the 38th species in the network model is has idx 1 in inputLayerNames (TGFb)
 	//remember that java indexes at 0
-	private int[] networkLayerInputIdxs = {38,1, 19,0}; 
+	
+	private int[] networkLayerInputIdxs = {}; //no feedback
+	private int[] networkLayerOutputIdxs = {}; //no feedback
+	
+	//These layers will be added to inputLayers
+	public String[] inputLayerNames = {"TGFB", "LatentTGFB", "Interleukin6", "Interleukin1",
+				"TNFalpha"};
+	private int[] inputDiffuseIdxs = {}; //numerical indices of inputLayerNames that should diffuse. MUST BE IN INCREASING ORDER
+	
+	private double latentdegradationRate = 0.0; //constant degradation rate for latent TGFB
+	private double activedegradationRate = (Double) p.getValue("activedegRate"); //constant degradation rate for active TGFB
 	
 	//indices of inputLayerNames that are inflammatory or anti-inflammatory/fibrotic
 	//used for gradient orientation (e.g. the inflammatory cytokines are a gradient from left to right
-	private int[] inflam = {1,2,3};
+	private int[] inflam = {2,3,4};
 	private int[] antiInflam = {0};
 	
-	//other cytokines that you might want to keep track of such as latentTGFb etc.
-	private String[] otherExtracellularNames = {}; //analagous to inputLayerNames above
-	private int[] otherExtracellularDiffuseIdxs = {}; //analagous to inputDiffuseIdxs. MUST BE IN INCREASING ORDER
-	//ints alternate from network indices to indices in the inputLayer arraylist
-	private int[] networkLayerOtherIdxs = {}; //analagous to networkLayerInputIdxs
-	
-	
 	private MatlabEngine eng;
+	
+	//define saturating concentrations for each of the chemokines in order to calculate weights for the network model
+	private double TGFBsat = 1;
+	private double IL1sat = 1;
+	private double IL6sat = 1;
+	private double TNFasat = 1;
+	
+	//define max values that would saturate the receptor. This value will result in a weight of 1. Should be the same as the saturating values, but is used to initialize the value layer.
+	private double[] inflamMax = {1, 1, 1}; //IL-6 max, IL-1 max, TNFa max - correspond to inflam indexes
+	private double[] antiInflamMax = {1, 1}; //TGFB max, latent TGF-B max - correspond to antiInflam indexes
+
 	
 	//these variable are used for cytokines that change over time
 	private ArrayList<Double> relChemVals; //the array of relative levels
@@ -85,10 +99,10 @@ public class AMFACSpace extends DefaultContext<Object> {
 	
 
 	private int cellsPerGrid = 1;
-	private int chemokineFeedbackTimeConstant = 36; //how much a cell's network influences local concentrations of chemicals in 
-														//networkLayerInputIdxs and networkLayerOtherIdxs
 
-	double[] initialNet;
+	double[] initialNet = new double[91];
+
+
 	
 	/**
 	 * Create all fields necessary for this class
@@ -98,50 +112,39 @@ public class AMFACSpace extends DefaultContext<Object> {
 
 		// Define the Grid Space
 		grid = GridFactoryFinder.createGridFactory(null).createGrid("grid", this,
-				new GridBuilderParameters<Object>(new WrapAroundBorders(), new RandomGridAdder<Object>(), true,
+				new GridBuilderParameters<Object>(new BouncyBorders(), new RandomGridAdder<Object>(), false,
 						gridWidth, gridHeight));
 
 		// Build all GridValueLayers
-		collagen = new GridValueLayer("collagen", 1.0, true, gridWidth, gridHeight);
+		//initialize collagen layer at 3% area fraction
+		collagen = new GridValueLayer("collagen", 0.0, false, gridWidth, gridHeight);
 		this.addValueLayer(collagen);
 		
 		//create grid value layers
 		GridValueLayer layer;
 		for (int i=0; i < inputLayerNames.length; i++) {
-			layer = new GridValueLayer(inputLayerNames[i], 1.0, true, gridWidth, gridHeight);
+			layer = new GridValueLayer(inputLayerNames[i], 1.0, false, gridWidth, gridHeight);
 			inputLayers.add(layer);
 			this.addValueLayer(layer);
 		}
 		
-		for (int i=0; i < otherExtracellularNames.length; i++) {
-			layer = new GridValueLayer(otherExtracellularNames[i], 1.0, true, gridWidth, gridHeight);
-			otherExtracellularLayers.add(layer);
-			this.addValueLayer(layer);
-		}
+
+		Parameters p = RunEnvironment.getInstance().getParameters();
+		boolean feedback = (Boolean) p.getValue("TGFB_feedback");
 		
-		//read the time signal for the chemokines
-		String csvFile = "RelativeChemValues.csv";
-		BufferedReader br = null;
-		String line = "";
-		String csvSplitBy = ",";
-		relChemVals = new ArrayList<Double>();
-		try {
-			br = new BufferedReader(new FileReader(csvFile));
-			while ((line = br.readLine()) != null) {
-				String[] in = line.split(csvSplitBy);
-				try {
-					relChemVals.add(new Double(Double.parseDouble(in[0])));
-				} catch (NumberFormatException e) {
-					System.out.println("Non numerical Value found in RelativeChemValues: " + in[0] + "...");
-				}
+			if (feedback == true) {
+				networkLayerInputIdxs = ArrayUtils.add(networkLayerInputIdxs, 19); //active TGF-B
+				networkLayerInputIdxs = ArrayUtils.add(networkLayerInputIdxs, 0); //active TGF-B
+				networkLayerOutputIdxs = ArrayUtils.add(networkLayerOutputIdxs, 23); //latent TGF-B
+				networkLayerOutputIdxs = ArrayUtils.add(networkLayerOutputIdxs, 1); //latent TGF-B
 			}
 			
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		relChemFactorIdx = 0;
-
+		System.out.println(Arrays.toString(networkLayerInputIdxs));
+		System.out.println(Arrays.toString(networkLayerOutputIdxs));
 		
+	}
+	
+	public void createDiffusers() {
 		
 		//create diffusers
 		Parameters p = RunEnvironment.getInstance().getParameters();
@@ -156,22 +159,45 @@ public class AMFACSpace extends DefaultContext<Object> {
 				diffuse = new ValueLayerDiffuser(inputLayers.get(inputDiffuseIdxs[i]), diffEvap, diffCoeff, true);
 				inputDiffuseLayers.add(diffuse);
 				difIdx++;
-			} else {
-				inputDiffuseLayers.add(null); //add null elements to fill in the gaps
-			}
+			} //else {
+				//inputDiffuseLayers.add(null); //add null elements to fill in the gaps
+			//}
 		}
 		
+		//System.out.println("Create Diffusers");
+	}
+	
+	@ScheduledMethod(start = 0, priority = 1)
+	public void initialize() {
+		loadMatlab();
+		initializeFibroblasts();
+		initializeChemokineLayer();
+		initializeNetworkState();
+		//createDiffusers();
+		writeOutputData();
+	}
+	
+	
+	@ScheduledMethod(start = 1, interval = 1, priority = 2)
+	public void goSecond() {
+		processCellBehavior();
+		//System.out.println("Second");
+	}
+	
+	@ScheduledMethod(start = 1, interval = 1, priority = 0)
+	public void goLast(){
+		Parameters p = RunEnvironment.getInstance().getParameters();
+		boolean feedback = (Boolean) p.getValue("TGFB_feedback");
 		
-		for (int i=0; i < otherExtracellularDiffuseLayers.size(); i++) {
-			if (difIdx < otherExtracellularDiffuseIdxs.length && i==otherExtracellularDiffuseIdxs[difIdx]) {
-				diffuse = new ValueLayerDiffuser(inputLayers.get(otherExtracellularDiffuseIdxs[i]), diffEvap, diffCoeff, true);
-				otherExtracellularDiffuseLayers.add(diffuse);
-				difIdx++;
-			} else {
-				otherExtracellularDiffuseLayers.add(null);
+			if (feedback == true){
+				TGFBactivation();
 			}
-		}
+			
+		writeOutputData();
+		//System.out.println("Last");
+	}
 		
+	public void loadMatlab() {
 		//start the matlab connection
 		try {
 			eng = MatlabEngine.startMatlab();
@@ -179,6 +205,10 @@ public class AMFACSpace extends DefaultContext<Object> {
 			e.printStackTrace();
 		}
 		
+		//System.out.println("Load Matlab");
+	}
+	
+	public void initializeFibroblasts() {	
 		//add fibroblasts
 		Fibroblast fibroblast;
 		for (int i = 0; i < initialFibroblastCount; i++) {
@@ -186,22 +216,10 @@ public class AMFACSpace extends DefaultContext<Object> {
 			this.add(fibroblast);
 			fibroblasts.add(fibroblast);
 		}
+		
+		//System.out.println("Initialize Fibroblasts");
 	}
 
-	/**
-	 * Sets the collagen layer values as uniform
-	 */
-	@ScheduledMethod(start = 0, priority = 1)
-	public void initializeCollagenLayer(){
-		for (int i = 1; i <= gridWidth; i++) {
-			for (int j = 1; j <= gridHeight; j++) {
-				collagen.set(0.25, i - 1, j - 1);
-			}
-		}
-	}
-	
-
-	@ScheduledMethod(start = 0, priority = 2)
 	public void initializeChemokineLayer() {
 		double wdub = (double) gridWidth;
 		double hdub = (double) gridHeight;
@@ -209,20 +227,26 @@ public class AMFACSpace extends DefaultContext<Object> {
 			for (int y = 0; y < gridHeight; y++) {
 				//inflammatory chemokines
 				for (int i = 0; i < inflam.length; i++) {
-					inputLayers.get(inflam[i]).set(((double)x)/wdub, x, y);
+					inputLayers.get(inflam[i]).set(((double)x)/wdub*inflamMax[i], x, y);
 				}
 				//fibrotic chemokines
 				for (int i = 0; i < antiInflam.length; i++) {
-					inputLayers.get(antiInflam[i]).set(((double)y)/hdub, x, y);
+					inputLayers.get(antiInflam[i]).set(((double)y)/hdub*antiInflamMax[i], x, y);
 				}
 			}
 		}
+		
+		//System.out.println("Initialize Chemokines");
 
+	}
+	
+	public void initializeNetworkState() {
 		// load the mat file only once
 		try {
 			eng.eval("load network.mat");
 			eng.eval("load initialNet.mat");
 			initialNet = eng.getVariable("initialNet");
+			
 			for (Fibroblast f: fibroblasts) {
 				f.setNetworkState(initialNet);
 			}
@@ -235,81 +259,23 @@ public class AMFACSpace extends DefaultContext<Object> {
 			System.out.println(e);
 		}
 		
-	}
-	
-	/**
-	 * Initialize the layers of the other extracellular species
-	 */
-	@ScheduledMethod(start = 0, priority = 2)
-	public void initializeOtherExLayer() {
+		//System.out.println("Initialize Network State");
 		
-		GridValueLayer layer;
-		for (int l=0; l < otherExtracellularNames.length; l++) {
-			layer = otherExtracellularLayers.get(l);
-			for (int i = 0; i < gridWidth; i++) {
-				for (int j = 0; j < gridHeight; j++) {
-					layer.set(0, i,j);
-				}
-			}
-		}
 	}
 	
-	/**
-	 * Diffuses each diffusable layer
-	 */
-	@ScheduledMethod(start = 0, interval = 1, priority = 1)
-	public void diffuse() {
-		for (ValueLayerDiffuser layer : inputDiffuseLayers) {
-			if (layer != null) {
-				layer.diffuse();
-			}
-			
-		}
-		for (ValueLayerDiffuser layer : otherExtracellularDiffuseLayers) {
-			if (layer != null) {
-				layer.diffuse();
-			}
-		}
-	}
-	
-	/**
-	 * Updates chemokine layers to show long term time courses
-	 * uses data from RelativeChemLevels.csv
-	 * WARNING: This only serves as example code that could be used to make long term time courses
-	 * I do not actually use this method in my simulations and have not debugged all possible errors
-	 * such as a proper initial cytokine profile
-	 */
-	//@ScheduledMethod(start = 0, interval = 24, priority = 1) //commented out because I don't actually want it to run
-	public void relChemVal() {
-		if (relChemFactorIdx < relChemVals.size()-1) {
-			relChemFactorIdx++;
-		}
-		double coeff = relChemVals.get(relChemFactorIdx)/relChemVals.get(relChemFactorIdx-1);
-		
-		for (int i=0; i < inputLayers.size(); i++) {
-			GridValueLayer layer = inputLayers.get(i);
-			for (int x =0; x < gridWidth; x++) {
-				for (int y = 0; y < gridHeight; y++) {
-					layer.set(coeff*layer.get(x,y), x,y);
-				}
-			}
-		}
-	}
-	
-	/**
-	 * Writes data every 24 ticks
-	 */
-	@ScheduledMethod(start = 1, interval=24, priority = 1)
-	public void writeCollagenData() {
+
+	public void writeOutputData() {
 		//collagen
-		String fileName = "C:\\Users\\Michaela\\Documents\\col.csv";
+		
+		//String fileName = "C:\\Users\\smr2we\\Documents\\collagen.csv";
+		String fileName = ".\\Results\\collagen.csv";
 		String delim = ",";
 		String newline = "\n";
 		FileWriter fileWriter;
 		try {
 			fileWriter = new FileWriter(fileName, true);
-			for (int x = 0; x < gridWidth; x++) {
-				for (int y = 0; y < gridHeight; y++) {
+			for (int y = 0; y < gridWidth; y++) {
+				for (int x = 0; x < gridHeight; x++) {
 					fileWriter.append(Double.toString(collagen.get(x,y)));
 					//if not at the end
 					if (!(x+1 == gridWidth && y+1 == gridHeight)) {
@@ -331,15 +297,13 @@ public class AMFACSpace extends DefaultContext<Object> {
 			e.printStackTrace();
 		}
 		
-		
-		
-		
+			
 		//tgfb
-		fileName = "C:\\Users\\Michaela\\Documents\\tgfb.csv";
+		fileName = ".\\Results\\tgfb.csv";
 		try {
 			fileWriter = new FileWriter(fileName, true);
-			for (int x = 0; x < gridWidth; x++) {
-				for (int y = 0; y < gridHeight; y++) {
+			for (int y = 0; y < gridWidth; y++) {
+				for (int x = 0; x < gridHeight; x++) {
 					fileWriter.append(Double.toString(inputLayers.get(0).get(x,y))); //index 0 is hardcoded in here
 					fileWriter.append(delim);
 				}
@@ -358,10 +322,382 @@ public class AMFACSpace extends DefaultContext<Object> {
 			e.printStackTrace();
 		}
 		
+		//latent tgfb
+		fileName = ".\\Results\\LatentTgfb.csv";
+		try {
+			fileWriter = new FileWriter(fileName, true);
+			for (int y = 0; y < gridWidth; y++) {
+				for (int x = 0; x < gridHeight; x++) {
+					fileWriter.append(Double.toString(inputLayers.get(1).get(x,y))); //index 1 is hardcoded in here
+					fileWriter.append(delim);
+				}
+			}
+			fileWriter.append(newline);
+			try {
+				fileWriter.flush();
+				fileWriter.close();
+			} catch (IOException e) {
+				System.out.println("Error while flushing/closing fileWriter !!!");
+				e.printStackTrace();
+			}
+			
+		} catch (Exception e) {
+			System.out.println("Error in CsvFileWriter !!!");
+			e.printStackTrace();
+		}
+		
+		//deposition (average of Col I and III mRNA)
+		fileName = ".\\Results\\deposition.csv";
+		try {
+			fileWriter = new FileWriter(fileName, true);
+			for (int y = 0; y < gridWidth; y++) {
+				for (int x = 0; x < gridHeight; x++) {
+					for( Object object: grid.getObjectsAt(x,y)) {
+						
+						Fibroblast f = (Fibroblast)object;
+						double[] states = f.getNetworkState();
+						double deposition = (states[87]+states[88])/2;
+					
+
+					fileWriter.append(Double.toString(deposition)); //index 1 is hardcoded in here
+					fileWriter.append(delim);
+					}
+				}
+			}
+			fileWriter.append(newline);
+			try {
+				fileWriter.flush();
+				fileWriter.close();
+			} catch (IOException e) {
+				System.out.println("Error while flushing/closing fileWriter !!!");
+				e.printStackTrace();
+			}
+			
+		} catch (Exception e) {
+			System.out.println("Error in CsvFileWriter !!!");
+			e.printStackTrace();
+		}
+		
+		//degradation (average of MMP 1, 2, and 9)
+		fileName = ".\\Results\\degradation.csv";
+		try {
+			fileWriter = new FileWriter(fileName, true);
+			for (int y = 0; y < gridWidth; y++) {
+				for (int x = 0; x < gridHeight; x++) {
+					for( Object object: grid.getObjectsAt(x,y)) {
+						
+						Fibroblast f = (Fibroblast)object;
+						double[] states = f.getNetworkState();
+						double degradation = (states[81]+states[82]+states[83])/3;
+					
+
+					fileWriter.append(Double.toString(degradation)); //index 1 is hardcoded in here
+					fileWriter.append(delim);
+					}
+				}
+			}
+			fileWriter.append(newline);
+			try {
+				fileWriter.flush();
+				fileWriter.close();
+			} catch (IOException e) {
+				System.out.println("Error while flushing/closing fileWriter !!!");
+				e.printStackTrace();
+			}
+			
+		} catch (Exception e) {
+			System.out.println("Error in CsvFileWriter !!!");
+			e.printStackTrace();
+		}
+		
+		//MMP1
+		fileName = ".\\Results\\MMP1.csv";
+
+		try {
+			fileWriter = new FileWriter(fileName, true);
+			for (int y = 0; y < gridWidth; y++) {
+				for (int x = 0; x < gridHeight; x++) {
+					for( Object object: grid.getObjectsAt(x,y)) {
+						
+						Fibroblast f = (Fibroblast)object;
+						double[] states = f.getNetworkState();
+						double degradation = (states[81]);
+					
+
+					fileWriter.append(Double.toString(degradation)); //index 1 is hardcoded in here
+					fileWriter.append(delim);
+					}
+				}
+			}
+			fileWriter.append(newline);
+			try {
+				fileWriter.flush();
+				fileWriter.close();
+			} catch (IOException e) {
+				System.out.println("Error while flushing/closing fileWriter !!!");
+				e.printStackTrace();
+			}
+			
+		} catch (Exception e) {
+			System.out.println("Error in CsvFileWriter !!!");
+			e.printStackTrace();
+		}
+		
+		//MMP2
+		fileName = ".\\Results\\MMP2.csv";
+
+		try {
+			fileWriter = new FileWriter(fileName, true);
+			for (int y = 0; y < gridWidth; y++) {
+				for (int x = 0; x < gridHeight; x++) {
+					for( Object object: grid.getObjectsAt(x,y)) {
+						
+						Fibroblast f = (Fibroblast)object;
+						double[] states = f.getNetworkState();
+						double degradation = (states[82]);
+					
+
+					fileWriter.append(Double.toString(degradation)); //index 1 is hardcoded in here
+					fileWriter.append(delim);
+					}
+				}
+			}
+			fileWriter.append(newline);
+			try {
+				fileWriter.flush();
+				fileWriter.close();
+			} catch (IOException e) {
+				System.out.println("Error while flushing/closing fileWriter !!!");
+				e.printStackTrace();
+			}
+			
+		} catch (Exception e) {
+			System.out.println("Error in CsvFileWriter !!!");
+			e.printStackTrace();
+		}
+		
+		//MMP9
+		fileName = ".\\Results\\MMP9.csv";
+
+		try {
+			fileWriter = new FileWriter(fileName, true);
+			for (int y = 0; y < gridWidth; y++) {
+				for (int x = 0; x < gridHeight; x++) {
+					for( Object object: grid.getObjectsAt(x,y)) {
+						
+						Fibroblast f = (Fibroblast)object;
+						double[] states = f.getNetworkState();
+						double degradation = (states[83]);
+					
+
+					fileWriter.append(Double.toString(degradation)); //index 1 is hardcoded in here
+					fileWriter.append(delim);
+					}
+				}
+			}
+			fileWriter.append(newline);
+			try {
+				fileWriter.flush();
+				fileWriter.close();
+			} catch (IOException e) {
+				System.out.println("Error while flushing/closing fileWriter !!!");
+				e.printStackTrace();
+			}
+			
+		} catch (Exception e) {
+			System.out.println("Error in CsvFileWriter !!!");
+			e.printStackTrace();
+		}
+		
+		//MMP14
+		fileName = ".\\Results\\MMP14.csv";
+
+		try {
+			fileWriter = new FileWriter(fileName, true);
+			for (int y = 0; y < gridWidth; y++) {
+				for (int x = 0; x < gridHeight; x++) {
+					for( Object object: grid.getObjectsAt(x,y)) {
+						
+						Fibroblast f = (Fibroblast)object;
+						double[] states = f.getNetworkState();
+						double degradation = (states[84]);
+					
+
+					fileWriter.append(Double.toString(degradation)); //index 1 is hardcoded in here
+					fileWriter.append(delim);
+					}
+				}
+			}
+			fileWriter.append(newline);
+			try {
+				fileWriter.flush();
+				fileWriter.close();
+			} catch (IOException e) {
+				System.out.println("Error while flushing/closing fileWriter !!!");
+				e.printStackTrace();
+			}
+			
+		} catch (Exception e) {
+			System.out.println("Error in CsvFileWriter !!!");
+			e.printStackTrace();
+		}
+		
+		//ColI
+				fileName = ".\\Results\\ColI.csv";
+				try {
+					fileWriter = new FileWriter(fileName, true);
+					for (int y = 0; y < gridWidth; y++) {
+						for (int x = 0; x < gridHeight; x++) {
+							for( Object object: grid.getObjectsAt(x,y)) {
+								
+								Fibroblast f = (Fibroblast)object;
+								double[] states = f.getNetworkState();
+								double deposition = (states[89]);
+							
+
+							fileWriter.append(Double.toString(deposition)); //index 1 is hardcoded in here
+							fileWriter.append(delim);
+							}
+						}
+					}
+					fileWriter.append(newline);
+					try {
+						fileWriter.flush();
+						fileWriter.close();
+					} catch (IOException e) {
+						System.out.println("Error while flushing/closing fileWriter !!!");
+						e.printStackTrace();
+					}
+					
+				} catch (Exception e) {
+					System.out.println("Error in CsvFileWriter !!!");
+					e.printStackTrace();
+				}
+				
+			//ColIII
+				fileName = ".\\Results\\ColIII.csv";
+				try {
+					fileWriter = new FileWriter(fileName, true);
+					for (int y = 0; y < gridWidth; y++) {
+						for (int x = 0; x < gridHeight; x++) {
+							for( Object object: grid.getObjectsAt(x,y)) {
+								
+								Fibroblast f = (Fibroblast)object;
+								double[] states = f.getNetworkState();
+								double deposition = (states[90]);
+							
+
+							fileWriter.append(Double.toString(deposition)); //index 1 is hardcoded in here
+							fileWriter.append(delim);
+							}
+						}
+					}
+					fileWriter.append(newline);
+					try {
+						fileWriter.flush();
+						fileWriter.close();
+					} catch (IOException e) {
+						System.out.println("Error while flushing/closing fileWriter !!!");
+						e.printStackTrace();
+					}
+					
+				} catch (Exception e) {
+					System.out.println("Error in CsvFileWriter !!!");
+					e.printStackTrace();
+				}
+				
+				//final network state
+	/*			ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+				double tick = schedule.getTickCount();
+				
+				if (tick == 168){
+					fileName = ".\\Results\\SteadyStateNetwork.csv";
+					
+					try {
+						fileWriter = new FileWriter(fileName, true);
+						for (int y = 0; y < gridWidth; y++) {
+							for (int x = 0; x < gridHeight; x++) {
+								for( Object object: grid.getObjectsAt(x,y)) {
+									
+									Fibroblast f = (Fibroblast)object;
+									double[] states = f.getNetworkState();
+								
+									for (int i = 0; i < states.length; i++){
+										fileWriter.append(Double.toString(states[i]));
+										fileWriter.append(delim);
+									}
+
+								}
+								fileWriter.append(newline);
+						}
+						}
+
+						try {
+							fileWriter.flush();
+							fileWriter.close();
+						} catch (IOException e) {
+							System.out.println("Error while flushing/closing fileWriter !!!");
+							e.printStackTrace();
+						}
+						
+					} catch (Exception e) {
+						System.out.println("Error in CsvFileWriter !!!");
+						e.printStackTrace();
+					}
+				}*/
+				
+				//network state of all fibroblasts
+				/*if (fibroblasts.size() != 0) {
+				
+				for (int i=0; i < fibroblasts.size(); i++) {
+
+					fileName = ".\\Results\\Fibroblast" + Integer.toString(i) + ".csv";
+					//System.out.println(fileName);
+				
+					
+					try {
+						fileWriter = new FileWriter(fileName, true);
+						
+						double[] networkstate = fibroblasts.get(i).getNetworkState();
+						GridPoint pt = fibroblasts.get(i).getPoint();
+						double y = pt.getY();
+						double x = pt.getX();
+						
+								
+						for (int j = 0; j < networkstate.length; j++){
+								fileWriter.append(Double.toString(networkstate[j]));
+								fileWriter.append(delim);
+						}
+						fileWriter.append(Double.toString(x));
+						fileWriter.append(delim);
+						fileWriter.append(Double.toString(y));
+						fileWriter.append(delim);
+
+						fileWriter.append(newline);
+						
+						try {
+							fileWriter.flush();
+							fileWriter.close();
+						} catch (IOException e) {
+							System.out.println("Error while flushing/closing fileWriter !!!");
+							e.printStackTrace();
+						}
+						
+					} catch (Exception e) {
+						System.out.println("Error in CsvFileWriter !!!");
+						e.printStackTrace();
+					}
+				}
+				}*/
+					
+					
+				
+		//System.out.println("Write Output Data");
 		
 		
-		//il6
-		fileName = "C:\\Users\\Michaela\\Documents\\il6.csv";
+		
+/*		//il6
+		fileName = ".\\Results\\il6.csv";
 		try {
 			fileWriter = new FileWriter(fileName, true);
 			for (int x = 0; x < gridWidth; x++) {
@@ -382,185 +718,7 @@ public class AMFACSpace extends DefaultContext<Object> {
 		} catch (Exception e) {
 			System.out.println("Error in CsvFileWriter !!!");
 			e.printStackTrace();
-		}
-	}
-	
-	/**
-	 * Writes data every 24 ticks
-	 */
-	@ScheduledMethod(start = 1, interval=24, priority = 1)
-	public void writeCellData() {
-		double[] cellNetwork;
-		//averages for every quadrant
-		double[][] cellCount = new double[2][2];
-		double[][] prolifQuad = new double[2][2];
-		double[][] migQuad = new double[2][2];
-		double[][] depQuad = new double[2][2];
-		double[][] degQuad = new double[2][2];
-		//network for every grid
-		double[][][] avgNet = new double[gridWidth][gridHeight][91];
-		
-		Fibroblast f;
-		//totals for every grid square
-		double counter, mig, prolif, dep, deg;
-		double[] gridNetwork;
-
-		int xQuad, yQuad;
-		//iterate through every grid element
-		for (int x = 0; x < gridWidth; x++) {
-			//make sure you know which quadrant to be in
-			if ( x < gridWidth/2) {
-				xQuad = 0;
-			} else {
-				xQuad = 1;
-			}
-			
-			for (int y = 0; y < gridHeight; y++) {
-				
-				if ( y < gridHeight/2) {
-					yQuad = 0;
-				} else {
-					yQuad = 1;
-				}
-				
-				//these variables represent a particular grid coordinate
-				counter = 0;
-				mig = 0;
-				prolif = 0;
-				dep = 0;
-				deg = 0;
-				gridNetwork = new double[91];
-				//for every cell in this grid coordinate
-				for (Object cell : grid.getObjectsAt(x, y)) {
-					counter++;
-					f = (Fibroblast) cell; //this will need to change if you have different agent types in the world
-											//perhaps a solution is to have a try catch when casting the object
-					
-					//net is for a particular cell
-					cellNetwork = f.getNetworkState();
-					//add to the grid coordinate variables
-					for (int i = 0; i < cellNetwork.length; i++) { //for every node in the network
-						gridNetwork[i] += cellNetwork[i];
-					}
-					mig += cellNetwork[66];
-					prolif += cellNetwork[69];
-					dep += (cellNetwork[87] + cellNetwork[88]) / 2;
-					deg += (cellNetwork[81] + cellNetwork[82] + cellNetwork[83] + cellNetwork[84]) / 4;
-				}
-				//normalize the whole network array
-				for (int i = 0; i < gridNetwork.length; i++) {
-					if (counter == 0) {
-						gridNetwork[i] = -1; //no cells here
-					} else {
-						gridNetwork[i] = gridNetwork[i] / counter; //average of networks at that grid coordinate
-					}
-					
-				}
-				//set the average network for that coordinate
-				avgNet[x][y] = gridNetwork;
-				//add to the appropriate quadrant position
-				cellCount[xQuad][yQuad] += counter;
-				migQuad[xQuad][yQuad] += mig;
-				prolifQuad[xQuad][yQuad] += prolif;
-				depQuad[xQuad][yQuad] += dep;
-				degQuad[xQuad][yQuad] += deg;
-			}
-		}
-
-		//turn the quad data into averages (or -1 if there were no cells there)
-		for (int i = 0; i < 2; i++) {
-			for (int j = 0; j < 2; j++) {
-				if (cellCount[i][j] == 0) {
-					migQuad[i][j] = -1;
-					prolifQuad[i][j] = -1;
-					depQuad[i][j] = -1;
-					degQuad[i][j] = -1;
-				} else {
-					migQuad[i][j] = migQuad[i][j] / cellCount[i][j];
-					prolifQuad[i][j] = prolifQuad[i][j] / cellCount[i][j];
-					depQuad[i][j] = depQuad[i][j] / cellCount[i][j];
-					degQuad[i][j] = degQuad[i][j] / cellCount[i][j];
-				}
-			}
-		}
-		
-		//write the data
-		String fileNameCompleteNet = "C:\\Users\\Michaela\\Documents\\completenetwork.csv";
-		String fileNameMig = "C:\\Users\\Michaela\\Documents\\mig.csv";
-		String fileNameProlif = "C:\\Users\\Michaela\\Documents\\prolif.csv";
-		String fileNameDep = "C:\\Users\\Michaela\\Documents\\dep.csv";
-		String fileNameDeg = "C:\\Users\\Michaela\\Documents\\deg.csv";
-		String fileNameCount = "C:\\Users\\Michaela\\Documents\\cellcount.csv";
-		
-		String delim = ",";
-		String newline = "\n";
-		FileWriter fileNet, fileMig, fileProlif, fileDep, fileDeg, fileCount;
-		try {
-			fileNet = new FileWriter(fileNameCompleteNet, true);
-			fileMig = new FileWriter(fileNameMig, true);
-			fileProlif = new FileWriter(fileNameProlif, true);
-			fileDep = new FileWriter(fileNameDep, true);
-			fileDeg = new FileWriter(fileNameDeg, true);
-			fileCount = new FileWriter(fileNameCount, true);
-			
-			//order of quadrants is 3, 2, 4, 1
-			for (int i = 0; i < 2; i++) {
-				for (int j = 0; j < 2; j++) {
-					fileMig.append(Double.toString(migQuad[i][j]));
-					fileProlif.append(Double.toString(prolifQuad[i][j]));
-					fileDep.append(Double.toString(depQuad[i][j]));
-					fileDeg.append(Double.toString(degQuad[i][j]));
-					fileCount.append(Double.toString(cellCount[i][j]));
-					
-					if (!(i+1==2 && j+1==2)) {
-						fileMig.append(delim);
-						fileProlif.append(delim);
-						fileDep.append(delim);
-						fileDeg.append(delim);
-						fileCount.append(delim);
-					}
-				}
-			}
-			fileMig.append(newline);
-			fileProlif.append(newline);
-			fileDep.append(newline);
-			fileDeg.append(newline);
-			fileCount.append(newline);
-			
-			for (int x = 0; x < gridWidth; x++) {
-				for (int y = 0; y < gridHeight; y++) {
-					for (int i = 0; i < avgNet[1][1].length; i++) {
-						fileNet.append(Double.toString(avgNet[x][y][i]));
-						if (!(i+1==avgNet[1][1].length)) {
-							fileNet.append(delim);
-						}
-					}
-					fileNet.append(newline);
-				}
-			}
-			fileNet.append(newline);
-			try {
-				fileNet.flush();
-				fileMig.flush();
-				fileProlif.flush();
-				fileDep.flush();
-				fileDeg.flush();
-				fileCount.flush();
-				fileNet.close();
-				fileMig.close();
-				fileProlif.close();
-				fileDep.close();
-				fileDeg.close();
-				fileCount.close();
-			} catch (IOException e) {
-				System.out.println("Error while flushing/closing fileWriter !!!");
-				e.printStackTrace();
-			}
-			
-		} catch (Exception e) {
-			System.out.println("Error in CsvFileWriter !!!");
-			e.printStackTrace();
-		}
+		}*/
 		
 	}
 	
@@ -573,7 +731,8 @@ public class AMFACSpace extends DefaultContext<Object> {
 	public void addFibroblast(GridPoint pt, double[] network) {
 		Fibroblast f = new Fibroblast(this, cellsPerGrid);
 		this.add(f);
-		f.setNetworkState(initialNet);
+		double[] initial = new double[91];
+		f.setNetworkState(initial);
 		//f.setNetworkState(network); //if you want daughter cells to inherit network state of the parent cell
 		grid.moveTo(f, pt.getX(), pt.getY());
 		f.initialize();
@@ -593,51 +752,80 @@ public class AMFACSpace extends DefaultContext<Object> {
 	/**
 	 * Iterates through all the cells in the array list then creates a large array to pass to matlab to process all at once
 	 */
-	@ScheduledMethod(start = 1, interval=1, priority = 4)
+
 	public void processCellBehavior() {
-		
 		if (fibroblasts.size() == 0) {
 			return;
 		}
 		
 		//get every fibroblast's network state
+		
 		double[][] states = new double[fibroblasts.size()][fibroblasts.get(0).getNetworkState().length];
+		double[] TGFBweights = new double[fibroblasts.size()];
+		double[] IL1weights = new double[fibroblasts.size()];
+		double[] IL6weights = new double[fibroblasts.size()];
+		double[] TNFaweights = new double[fibroblasts.size()];
+		
+		GridValueLayer TGFB = inputLayers.get(0); //hardcoded indexes, may need to be changed in the future
+		GridValueLayer IL1 = inputLayers.get(3);
+		GridValueLayer IL6 = inputLayers.get(2);
+		GridValueLayer TNFa = inputLayers.get(4);
+		
 		for (int i=0; i < fibroblasts.size(); i++) {
 			states[i] = fibroblasts.get(i).getNetworkState();
+			Fibroblast f = fibroblasts.get(i);
+			GridPoint pt = f.getPoint();
+			double y = pt.getY();
+			double x = pt.getX();
+			
+			//System.out.println(x);
+			//System.out.println(y);
+			
+			TGFBweights[i] = TGFB.get(x,y)/TGFBsat;
+			IL1weights[i] = IL1.get(x,y)/IL1sat;
+			IL6weights[i] = IL6.get(x,y)/IL6sat;
+			TNFaweights[i] = TNFa.get(x,y)/TNFasat;
 		}
+		
+			//System.out.println(Arrays.toString(TGFBweights));
+			//System.out.println(Arrays.toString(IL1weights));
+			//System.out.println(Arrays.toString(IL6weights));
+			//System.out.println(Arrays.toString(TNFaweights));
+			
 		try {
 			eng.putVariable("states", states);
+			eng.putVariable("TGFBweights", TGFBweights);
+			eng.putVariable("IL1weights", IL1weights);
+			eng.putVariable("IL6weights", IL6weights);
+			eng.putVariable("TNFaweights", TNFaweights);
+			
+			//System.out.println(System.currentTimeMillis());
 			eng.eval("processCellBehavior");
+			//System.out.println(System.currentTimeMillis());
+			
 			states =  eng.getVariable("states"); //since states is a 2d array, there must be at least 2 fibroblasts
+			
 			GridPoint pt;
 			Fibroblast f;
-			
-			
+					
 			for (int i=0; i < fibroblasts.size(); i++) {
 				f = fibroblasts.get(i);
 				f.setNetworkState(states[i]);
 				pt = f.getPoint();
 				GridValueLayer layer;
 				
-				double orig, dvdt;	
+				double orig, dvdt, updated;	
 				int x,y; 
-				for (int j=0; j < networkLayerInputIdxs.length - 1; j+=2) {
+				
+				for (int j=0; j < networkLayerOutputIdxs.length - 1; j+=2) {
 					x = pt.getX();
 					y = pt.getY();
-					layer = inputLayers.get(networkLayerInputIdxs[j+1]);
+					layer = inputLayers.get(networkLayerOutputIdxs[j+1]);
 					orig = layer.get(x,y);
-					dvdt = (states[i][networkLayerInputIdxs[j]]-orig)/chemokineFeedbackTimeConstant;
+					dvdt = (states[i][networkLayerOutputIdxs[j]]-orig);
 					layer.set(orig+dvdt, x,y);
 				}
 				
-				for (int j=0; j < networkLayerOtherIdxs.length - 1; j+=2) {
-					x = pt.getX();
-					y = pt.getY();
-					layer = otherExtracellularLayers.get(networkLayerOtherIdxs[j+1]);
-					orig = layer.get(x,y);
-					dvdt = (states[i][networkLayerOtherIdxs[j]]-orig)/chemokineFeedbackTimeConstant;
-					layer.set(orig+dvdt, x,y);
-				}
 				
 			}
 		} catch (Exception e) {
@@ -645,53 +833,44 @@ public class AMFACSpace extends DefaultContext<Object> {
 			System.out.println(e);
 		}
 		
+		//System.out.println("Process Cell Behavior");
 	}
 	
-	public double avColQ1() {
-		double total = 0;
-		double counter = 0;
-		for (int x = gridWidth/2+1; x < gridWidth; x++) {
-			for (int y = gridHeight/2+1; y < gridHeight; y++) {
-				total += collagen.get(x,y);
-				counter++;
+	public void TGFBactivation() {
+		for (int x=0; x < gridWidth; x++){
+			for (int y=0; y < gridHeight; y++ ){
+				for( Object object: grid.getObjectsAt(x,y)) {
+				
+			Fibroblast f = (Fibroblast)object;
+					
+			double[] states = f.getNetworkState();
+			double activation = (states[82] + states[83])/2; //average of MMP2 and MMP9
+			
+			GridValueLayer TGFB;
+			GridValueLayer latentTGFB;
+			double origTGFB, origLatentTGFB;
+			
+			//get TGFB value layer at every grid point
+			TGFB = inputLayers.get(networkLayerInputIdxs[1]);
+			origTGFB = TGFB.get(x, y);
+			
+			//get latent TGFB value layer at every grid point
+			latentTGFB = inputLayers.get(networkLayerOutputIdxs[1]);
+			origLatentTGFB = latentTGFB.get(x, y);
+			
+			//activate TGFB based on activation rate and latent TGFB present
+			TGFB.set(origTGFB + activation*origLatentTGFB, x, y);
+			
+			//remove the same amount of latent TGFB from that grid point
+			latentTGFB.set(origLatentTGFB - activation*origLatentTGFB - latentdegradationRate*origLatentTGFB, x, y);
+			
+			//degrade TGFB at a constant rate
+			TGFB.set(TGFB.get(x, y)*(1-activedegradationRate), x, y);
+			
 			}
 		}
-		return total/counter;
-	}
-
-	public double avColQ2() {
-		double total = 0;
-		double counter = 0;
-		for (int x = 0; x < gridWidth/2; x++) {
-			for (int y = gridHeight/2+1; y < gridHeight; y++) {
-				total += collagen.get(x,y);
-				counter++;
-			}
 		}
-		return total/counter;
-	}
-
-	public double avColQ3() {
-		double total = 0;
-		double counter = 0;
-		for (int x = 0; x < gridWidth/2; x++) {
-			for (int y = 0; y < gridHeight/2; y++) {
-				total += collagen.get(x,y);
-				counter++;
-			}
-		}
-		return total/counter;
-	}
-
-	public double avColQ4() {
-		double total = 0;
-		double counter = 0;
-		for (int x = gridWidth/2+1; x < gridWidth; x++) {
-			for (int y = 0; y < gridHeight/2; y++) {
-				total += collagen.get(x,y);
-				counter++;
-			}
-		}
-		return total/counter;
+		
+		//System.out.println("TGFB Activation");
 	}
 }

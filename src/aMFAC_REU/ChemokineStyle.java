@@ -22,7 +22,8 @@ public class ChemokineStyle implements ValueLayerStyleOGL {
 		colorMap = new HashMap<Integer,Color>();
 		for (int i = 0; i < 100; i++) {
 			double v = (double) i;
-			colorMap.put(i, new Color((int) (255 * v /99.0), (int) (255*(1 - v /99.0)) , 0));
+			//colorMap.put(i, new Color((int) (255 * v /99.0), (int) (255*(1 - v /99.0)) , 0)); //green to red color scale
+			colorMap.put(i, new Color((int) (255 * v /99.0), (int) (255*( v /99.0)) , (int) (255*( v /99.0)))); //grayscale
 			
 		}
 	}
@@ -34,11 +35,11 @@ public class ChemokineStyle implements ValueLayerStyleOGL {
 		Color color = colorMap.get(roundVal);
 		
 		if (roundVal >= 100) {
-			color = Color.red;
+			color = Color.white;
 		} else if (roundVal < 0) {
-			color = Color.green;
+			color = Color.red;
 		} else if (color==null) {
-			color = Color.gray;
+			color = Color.green;
 		}
 		
 		return color;

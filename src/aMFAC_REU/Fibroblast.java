@@ -24,25 +24,12 @@ import repast.simphony.valueLayer.GridValueLayer;
 public class Fibroblast {
 	private AMFACSpace space;
 	Grid grid;
-	//test
-	//add test
-	
 
-	//cellular actions include movement, mitosis, apoptosis, and deposition/degradation of collagen
-	//the rates of these actions are a linear interpolation between the specified "max" and "min" rates
-	//the position on the line is determined by the output of the network model
-	//(which is a relative value 0 to 1)
-	private double minSpeed;
-	private double maxSpeed;
-	private double maxDepRate;
-	private double minDepRate;
-	private double maxDegRate;
-	private double minDegRate;
-	private double maxMitRate;
-	private double minMitRate;
-	private double apopProb;
 	
 	private double[] networkState;
+	
+	private Parameters p = RunEnvironment.getInstance().getParameters();
+	private boolean movement = (Boolean) p.getValue("Fibroblast_move"); //whether fibroblasts should move or not
 	
 	//These 11 layers are the 11 inputs to the Saucerman network model
 	//you will find identical variables at the top of AMFACSpace
@@ -50,11 +37,8 @@ public class Fibroblast {
 			"TNFalpha"};
 	private int[] inputNetworkIndices = {19,38,41,43};
 	private ArrayList<GridValueLayer> inputLayers = new ArrayList<GridValueLayer>();
-	private int tnfIdx = 3; //used for migration up tnf gradient
+	private int tnfIdx = 4; //used for migration up tnf gradient
 	
-	private String[] otherExtracellularNames = {};
-	private int[] otherExtracellularNetworkIndices = {};
-	private ArrayList<GridValueLayer> otherExtracellularLayers = new ArrayList<GridValueLayer>();
 	
 	//network inputs that stay constant
 	//note that they only start at constant, if there is feedback, these inputs may grow
@@ -63,11 +47,18 @@ public class Fibroblast {
 
 
 	private GridValueLayer collagen; //collagen layer
+	private GridValueLayer TGFB;
+	private GridValueLayer LatentTGFB;
+	private GridValueLayer IL6;
+	private GridValueLayer IL1;
+	private GridValueLayer TNFalpha;
+	
+	private double kgen = 1; //area fraction/hr
+	private double kdeg = 1; //area fraction/hr		
 	
 	private GridPoint pt;
 	
 	private int cellsPerGrid;
-	private int collagenTimeConstantFactor = 2;
 	
 	
 	/**
@@ -80,22 +71,13 @@ public class Fibroblast {
 		space = sp;
 		grid = (Grid) space.getProjection("grid");
 		
-		Parameters p = RunEnvironment.getInstance().getParameters();
-		
-		apopProb = (Double) p.getValue("apopProb");
-		maxSpeed = (Double) p.getValue("speedMax");
-		minSpeed = maxSpeed - (Double) p.getValue("speedRange");
-		maxDepRate = (Double) p.getValue("depMax");
-		minDepRate = maxDepRate - (Double) p.getValue("depRange");
-		maxDegRate = (Double) p.getValue("degMax");
-		minDegRate = maxDegRate - (Double) p.getValue("degRange");
-		maxMitRate = (Double) p.getValue("mitMax");
-		minMitRate = maxMitRate - (Double) p.getValue("mitRange");
+
 		//set the network state to 0 just like the y0 in the model
 		networkState = new double[91];
 		
 		
 		collagen = (GridValueLayer) space.getValueLayer("collagen");
+
 		
 		cellsPerGrid = cells;
 	}
@@ -105,7 +87,26 @@ public class Fibroblast {
 	 * (can't be in the constructor because the cell
 	 * has not yet been added to the world at that point)
 	 */
-	@ScheduledMethod(start = 0, priority = 5)
+	
+	@ScheduledMethod(start = 1, interval = 1, priority = 1)
+	public void goThird(){
+		//live();
+		updateCollagen();
+		
+		if (movement == true){
+			move();
+		}
+		//System.out.println("Third");
+
+	}
+	
+	@ScheduledMethod(start = 1, interval = 1, priority = 3)
+	public void goFirst(){
+		getCellNetwork();
+		//System.out.println("First");
+	}
+	
+	@ScheduledMethod(start = 0, priority = 0)
 	public void initialize() {
 		pt = grid.getLocation(this);
 		
@@ -113,13 +114,22 @@ public class Fibroblast {
 			inputLayers.add((GridValueLayer) space.getValueLayer(inputLayerNames[i]));
 		}
 		
-		for (int i = 0; i<otherExtracellularNames.length; i++) {
-			otherExtracellularLayers.add((GridValueLayer) space.getValueLayer(otherExtracellularNames[i]));
-		}
 		
 		for (int i = 0; i < constantIdxs.length; i++) {
 			networkState[constantIdxs[i]] = constantVals[i];
 		}
+		
+		int x = pt.getX();
+		int y = pt.getY();
+			
+		
+/*		GridValueLayer layer; //for each layer
+			for (int i = 0; i<inputLayerNames.length; i++) {
+				layer = inputLayers.get(i);
+				networkState[inputNetworkIndices[i]] = layer.get(pt.getX(),pt.getY());
+			}*/
+		
+		//System.out.println("Initialize");
 		
 	}
 	
@@ -151,25 +161,24 @@ public class Fibroblast {
 	 * Updates the cell's network based on local cytokine values
 	 * Does not reset the "constant" inputs back to 0.25
 	 */
-	@ScheduledMethod(start = 1, interval = 1, priority = 5)
+	
 	public void getCellNetwork() {
+		pt = grid.getLocation(this);
 		
 		int x = pt.getX();
 		int y = pt.getY();
+			
 		
-		//read input layers
-		GridValueLayer layer; //for each layer
-		for (int i = 0; i<inputLayerNames.length; i++) {
-			layer = inputLayers.get(i);
-			networkState[inputNetworkIndices[i]] = layer.get(x,y);
-		}
+			GridValueLayer layer; //for each layer
+			for (int i = 0; i<inputLayerNames.length; i++) {
+				layer = inputLayers.get(i);
+				networkState[inputNetworkIndices[i]] = layer.get(pt.getX(),pt.getY());
+			}
 		
-		//read the other chemicals in the network
-		for (int i = 0; i<otherExtracellularNames.length; i++) {
-			layer = otherExtracellularLayers.get(i);
-			networkState[otherExtracellularNetworkIndices[i]] = layer.get(x,y);
-		}
+		//System.out.println("Get Cell Network");
+		
 	}
+	
 	
 	/**
 	 * Returns the fibroblasts location
@@ -185,8 +194,11 @@ public class Fibroblast {
 	 * 
 	 * Apoptosis occurs at a constant probability
 	 */
-	@ScheduledMethod(start = 1, interval = 1, priority = 3)
-	public void live() {
+	
+	/*public void live() {
+		pt = grid.getLocation(this);
+		
+		//System.out.println("Live");
 
 		double mitosisTime = (minMitRate - maxMitRate) * (1 - networkState[69]) + maxMitRate;
 
@@ -204,39 +216,36 @@ public class Fibroblast {
 			space.removeFibroblast(this);
 		}
 
-	}
+	}*/
 
-	/**
-	 * Deposits collagen using a difference equation
-	 */
-	@ScheduledMethod(start = 1, interval = 1, priority = 2)
-	public void deposit() {
-		double depLevel = (networkState[87] + networkState[88])/2; //average of CmRNAs
-		double steadyState = (minDepRate - maxDepRate) *(1 - depLevel) + maxDepRate; //linear interpolation
-		double collagenValue = collagen.get(pt.getX(), pt.getY());
-		
-		double dcdt = (steadyState - collagenValue)/(cellsPerGrid*collagenTimeConstantFactor); //difference equation
-		if (dcdt < 0) { //cannot degrade in the deposit method
-			dcdt = 0;
-		}
-		collagen.set(collagenValue + dcdt, pt.getX(), pt.getY());
-		
-	}
 
-	/**
-	 * Degrades collagen using a difference equation
-	 */
-	@ScheduledMethod(start = 1, interval = 1, priority = 2)
-	public void degrade() {
+	public void updateCollagen() {
+		pt = grid.getLocation(this);
 		
-		double collagenValue = collagen.get(pt.getX(), pt.getY());
-		double degLevel = (networkState[81] + networkState[82] + networkState[83] + networkState[84])/4; //average of MMPs
-		double steadyState = (minDegRate - maxDegRate) * (1 - degLevel) + maxDegRate; //linear interpolation between 2 extremes
-		double dcdt = ((1 - steadyState) - collagenValue)/(cellsPerGrid*collagenTimeConstantFactor); //difference equation
-		if (dcdt > 0) { //can't deposit in the degrade method
-			dcdt = 0;
+		//System.out.println("Deposit");
+		
+		try {
+		int x = pt.getX();
+		int y = pt.getY();
+			
+		
+			collagen = (GridValueLayer) space.getValueLayer("collagen");
+		
+			double currentCollagen = collagen.get(pt.getX(), pt.getY());
+			
+			double depLevel = (networkState[87] + networkState[88])/2; //average of CmRNAs
+			double degLevel = (networkState[81] + networkState[82] + networkState[83])/3; //average of MMP1, 2, and 9
+
+			double dcdt = depLevel - (degLevel*currentCollagen);
+			
+			//System.out.println(depLevel);
+			
+			collagen.set(dcdt, x, y);
 		}
-		collagen.set(collagenValue + dcdt, pt.getX(), pt.getY());
+		catch  (Exception e) {
+			System.out.println(e);
+			e.printStackTrace();
+		}
 		
 	}
 
@@ -245,34 +254,70 @@ public class Fibroblast {
 	 * Direction is chosen by the gradient of tnfalpha
 	 * If there is a 10% gradient-the direction will be biased toward the highest gradient
 	 */
-	@ScheduledMethod(start = 1, interval = 1, priority = 1)
+	
 	public void move() {
+
+		pt = grid.getLocation(this);
 		
-		double speed = (maxSpeed - minSpeed) * (networkState[66] - 1) + maxSpeed;
-		//cells only move one grid at a time so this warning says that this restriction might not be desirable
-		if (speed > 1) { 
-			System.out.println("Warning: Calculated Fibroblast speed > 1");
+		//System.out.println("Move");
+		
+		try {
+		int x = pt.getX();
+		int y = pt.getY();
+		
+		List<GridPoint> emptySites = findEmptySites();
+		GridPoint destination;
+		destination = emptySites.get(0);
+		grid.moveTo(this, destination.getX(), destination.getY());
+		
+/*		TNFalpha = (GridValueLayer) space.getValueLayer("TNFalpha");
+		double maxTNFalpha = 0;
+		GridPoint destination = null;
+		
+		List<GridPoint> emptySites = findEmptySites();
+		for (GridPoint emptySite : emptySites) {
+			double TNFvalue = TNFalpha.get(emptySite.getX(), emptySite.getY());
+			if (TNFvalue > maxTNFalpha){
+				destination = emptySite;
+				maxTNFalpha = TNFvalue;
+			}
 		}
-		double mv = RandomHelper.nextDoubleFromTo(0, 1);
-		if (mv < speed) {
-			double pctThreshold = 0.1; //gradient percentage threshold needed to indicate a strong gradient
-			GridValueLayer tnf = inputLayers.get(tnfIdx);
-			double currVal = tnf.get(pt.getX(), pt.getY());
+		
+		grid.moveTo(this, destination.getX(), destination.getY());*/
+		
+		}
+		
+		catch  (Exception e) {
+			System.out.println(e);
+		}
+	}
+		/*
+		double speed = (maxSpeed - minSpeed) * (networkState[66] - 1) + maxSpeed;
+			//cells only move one grid at a time so this warning says that this restriction might not be desirable
+			if (speed > 1) { 
+				System.out.println("Warning: Calculated Fibroblast speed > 1");
+			}
+			double mv = RandomHelper.nextDoubleFromTo(0, 1);
+			if (mv < speed) {
+				double pctThreshold = 0.1; //gradient percentage threshold needed to indicate a strong gradient
+				
+				TNFalpha = (GridValueLayer) space.getValueLayer("TNFalpha");
+				double currVal = TNFalpha.get(x, y);
 			
-			List<GridPoint> emptySites = findEmptySites();
-			List<GridPoint> possibleDestinations = new ArrayList<GridPoint>();
-			List<Double> grads = new ArrayList<Double>();
-			double gradient;
-			for (GridPoint emptySite : emptySites) {
-				double otherVal = tnf.get(emptySite.getX(), emptySite.getY());
-				gradient = otherVal - currVal;
-				//gradient must be substantial, but there also must not be extreme
-				//(negligible or saturating) values of chemokines
+				List<GridPoint> emptySites = findEmptySites();
+				List<GridPoint> possibleDestinations = new ArrayList<GridPoint>();
+				List<Double> grads = new ArrayList<Double>();
+				double gradient;
+				for (GridPoint emptySite : emptySites) {
+					double otherVal = TNFalpha.get(emptySite.getX(), emptySite.getY());
+					gradient = otherVal - currVal;
+					//gradient must be substantial, but there also must not be extreme
+					//(negligible or saturating) values of chemokines
 				if (gradient > pctThreshold*currVal && currVal < 0.9 && otherVal > 0.1) {
 					possibleDestinations.add(emptySite);
 					grads.add(new Double(gradient));
+					}
 				}
-			}
 			
 			GridPoint destination;
 			if (!possibleDestinations.isEmpty()) {
@@ -283,7 +328,13 @@ public class Fibroblast {
 				grid.moveTo(this, destination.getX(), destination.getY());
 			}
 			pt = grid.getLocation(this);
+			}
 		}
+		catch  (Exception e) {
+			System.out.println(e);
+			e.printStackTrace();
+		}
+	
 	}
 
 	

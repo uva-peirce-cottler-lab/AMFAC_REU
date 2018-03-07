@@ -1,5 +1,5 @@
 <repast.simphony.visualization.engine.CartesianDisplayDescriptor>
-  <name>4)TGFB</name>
+  <name>6)IL1</name>
   <type>2D</type>
   <styles/>
   <editedStyles/>
@@ -13,7 +13,7 @@
     <pType>LAST</pType>
     <duration>-1.0</duration>
     <frequency>REPEAT</frequency>
-    <hashCode>-1529167650</hashCode>
+    <hashCode>596001664</hashCode>
   </schedParams>
   <layoutClassName>foo.bar.baz</layoutClassName>
   <layoutProjection>grid</layoutProjection>
@@ -65,6 +65,6 @@
   </backgroundColor>
   <valueLayerStyleName>aMFAC_REU.ChemokineStyle</valueLayerStyleName>
   <valueLayers>
-    <string>TGFB</string>
+    <string>Interleukin1</string>
   </valueLayers>
 </repast.simphony.visualization.engine.CartesianDisplayDescriptor>

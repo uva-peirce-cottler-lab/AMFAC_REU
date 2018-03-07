@@ -3,6 +3,7 @@
 	<context id="AMFACSpace">
 		<projection type="grid" id="grid"></projection>
 		<projection type="value layer" id="TGFB"></projection>
+		<projection type="value layer" id="LatentTGFB"></projection>
 		<projection type="value layer" id="Interleukin6"></projection>
 		<projection type="value layer" id="Interleukin1"></projection>
 		<projection type="value layer" id="TNFalpha"></projection>
